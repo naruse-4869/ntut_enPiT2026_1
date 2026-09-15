@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello World</title>
+
+    <!-- 【CSSの部分】見た目を整えます -->
+    <style>
+        body {
+            /* 画面の中央に配置するための設定 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f4f8;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        .hello-box {
+            /* 文字や枠の装飾 */
+            font-size: 3rem;
+            font-weight: bold;
+            color: #2c3e50;
+            background-color: #ffffff;
+            padding: 20px 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 【HTMLの部分】骨組みを作ります -->
+    <!-- JavaScriptから文字を入れるための空の箱（divタグ）を用意します -->
+    <div id="target" class="hello-box"></div>
+
+    <!-- 【JavaScriptの部分】動きや処理を追加します -->
+    <script>
+        // ページが読み込まれたら実行する処理
+        document.addEventListener("DOMContentLoaded", function() {
+            // idが"target"のHTML要素を取得する
+            const targetElement = document.getElementById("target");
+            
+            // 取得した要素の中に「Hello World!」というテキストを挿入する
+            targetElement.textContent = "Hello World!";
+        });
+    </script>
+
+</body>
+</html>
