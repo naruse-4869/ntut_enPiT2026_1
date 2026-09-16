@@ -71,12 +71,17 @@
 
             let isDetecting = false;
             let lastDetectedAt = 0;
-            const detectionCooldown = 5000;
+            const detectionCooldown = 1000;
 
             /* ★新規追加：Service Worker を登録 */
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
-                    .then(() => console.log("Service Worker registered"));
+                    .then(registration => {
+                        console.log("Service Worker registered");
+                        registration.getNotifications().then(notifications => {
+                            notifications.forEach(notification => notification.close());
+                        });
+                    });
             }
 
             startBtn.addEventListener("click", async function() {
@@ -125,9 +130,14 @@
 
                                 /* ★新規追加：通知バーに通知を送る */
                                 navigator.serviceWorker.ready.then(reg => {
+                                    reg.getNotifications().then(notifications => {
+                                        notifications.forEach(notification => notification.close());
+                                    });
                                     reg.showNotification("気づかせる君", {
                                         body: "冷蔵庫を閉めてください！",
-                                        icon: "image/logo.jpg"
+                                        icon: "image/logo.jpg",
+                                        tag: "sound-detected",
+                                        renotify: false
                                     });
                                 });
 
