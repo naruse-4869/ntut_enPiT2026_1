@@ -70,6 +70,8 @@
             targetElement.textContent = "気づかせる君！";
 
             let isDetecting = false;
+            let lastDetectedAt = 0;
+            const detectionCooldown = 5000;
 
             /* ★新規追加：Service Worker を登録 */
             if ("serviceWorker" in navigator) {
@@ -113,8 +115,9 @@
                             }
                         }
                         
-                        // 変更: 音量は考慮せず、ピークのインデックス（音の高さ）のみで判定
-                        if (peakIndex > 110) {
+                        const now = Date.now();
+                        if (maxVolume > 50 && peakIndex > 120 && now - lastDetectedAt >= detectionCooldown) {
+                            lastDetectedAt = now;
                             isDetecting = true;
                             targetElement.textContent = "音がした";
 
@@ -123,7 +126,7 @@
                                 /* ★新規追加：通知バーに通知を送る */
                                 navigator.serviceWorker.ready.then(reg => {
                                     reg.showNotification("気づかせる君", {
-                                        body: "音を検知しました！",
+                                        body: "冷蔵庫を閉めてください！",
                                         icon: "image/logo.jpg"
                                     });
                                 });
