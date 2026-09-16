@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hello World</title>
 
-    <!-- 【CSSの部分】見た目を整えます -->
     <style>
         body {
             display: flex;
@@ -72,6 +71,12 @@
 
             let isDetecting = false;
 
+            /* ★新規追加：Service Worker を登録 */
+            if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.register("service-worker.js")
+                    .then(() => console.log("Service Worker registered"));
+            }
+
             startBtn.addEventListener("click", async function() {
                 try {
 
@@ -118,13 +123,14 @@
 
                             setTimeout(() => {
 
-                                /* ★新規追加：ブラウザ通知を送る */
-                                new Notification("気づかせる君", {
-                                    body: "音を検知しました！",
-                                    icon: "image/logo.jpg"
+                                /* ★新規追加：通知バーに通知を送る */
+                                navigator.serviceWorker.ready.then(reg => {
+                                    reg.showNotification("気づかせる君", {
+                                        body: "音を検知しました！",
+                                        icon: "image/logo.jpg"
+                                    });
                                 });
 
-                                // 既存の alert（残してもOK）
                                 alert("音を検知しました！");
 
                                 targetElement.textContent = "音を監視中...";
