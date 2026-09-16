@@ -88,7 +88,7 @@
                     const microphone = audioContext.createMediaStreamSource(stream);
 
                     microphone.connect(analyser);
-                    analyser.fftSize = 256;
+                    analyser.fftSize = 2048; // FFTサイズを大きくして精度を上げる
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
                     targetElement.textContent = "音を監視中...";
@@ -100,13 +100,19 @@
                         analyser.getByteFrequencyData(dataArray);
 
                         let maxVolume = 0;
+                        let peakIndex = 0; // 追加: 最大音量の位置を記録
                         for (let i = 0; i < dataArray.length; i++) {
                             if (dataArray[i] > maxVolume) {
                                 maxVolume = dataArray[i];
+                                peakIndex = i; // 追加
                             }
                         }
+                        
+                        // 追加: 周波数（Hz）を計算
+                        const frequency = (peakIndex / dataArray.length) * (audioContext.sampleRate / 2);
 
-                        if (maxVolume > 100) {
+                        // 音量が一定以上、かつ周波数（例: 2000Hz）を超えた場合にアクションを起こす
+                        if (maxVolume > 100 && frequency > 2000) {
                             isDetecting = true;
                             targetElement.textContent = "音がした";
 
