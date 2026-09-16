@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hello World</title>
-
     <style>
         body {
             display: flex;
@@ -16,19 +15,16 @@
             background-color: #f0f4f8;
             font-family: 'Helvetica Neue', Arial, sans-serif;
         }
-
         .logo-container {
             text-align: center;
             margin-bottom: 15px;
         }
-
         .logo-image {
             max-width: 100%;
             height: auto;
             width: 250px;
             border-radius: 8px;
         }
-
         .hello-box {
             font-size: 3rem;
             font-weight: bold;
@@ -39,7 +35,6 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             text-align: center;
         }
-
         #startBtn {
             font-size: 1.2rem;
             font-weight: bold;
@@ -54,24 +49,20 @@
     </style>
 </head>
 <body>
-
     <div class="logo-container">
-        <img src="image/logo.jpg" alt="気づかせる君 ロゴ" class="logo-image">
+        <img src="image/logo.jpg" alt="Logo" class="logo-image">
     </div>
-
-    <button id="startBtn">マイクをオンにする</button>
-
-    <div id="target" class="hello-box"></div>
+    <button id="startBtn">開始</button>
+    <div id="target" class="hello-box">待機中</div>
 
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             const targetElement = document.getElementById("target");
             const startBtn = document.getElementById("startBtn");
-            targetElement.textContent = "気づかせる君！";
 
             let isDetecting = false;
             let lastDetectedAt = 0;
-            const detectionCooldown = 2000;
+            const detectionCooldown = 3000;
 
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
@@ -87,7 +78,7 @@
                 try {
                     const permission = await Notification.requestPermission();
                     if (permission !== "granted") {
-                        alert("通知が許可されていません");
+                        alert("通知が許可されていません。");
                         return;
                     }
 
@@ -95,21 +86,20 @@
                     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     const analyser = audioContext.createAnalyser();
                     const microphone = audioContext.createMediaStreamSource(stream);
-
                     microphone.connect(analyser);
-                    analyser.fftSize = 2048; 
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.fftSize = 2048;
 
-                    targetElement.textContent = "音を監視中...";
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    targetElement.textContent = "解析中...";
                     startBtn.style.display = "none";
 
                     function checkAudio() {
                         if (isDetecting) return;
-
                         analyser.getByteFrequencyData(dataArray);
 
                         let maxVolume = 0;
-                        let peakIndex = 0; 
+                        let peakIndex = 0;
+
                         for (let i = 0; i < dataArray.length; i++) {
                             if (dataArray[i] > maxVolume) {
                                 maxVolume = dataArray[i];
@@ -118,49 +108,39 @@
                         }
                         
                         const now = Date.now();
-                        if (peakIndex > 120 && now - lastDetectedAt >= detectionCooldown) {
+                        
+                        // maxVolume > 50 で無音ノイズを弾き、alert を出さないように修正
+                        if (maxVolume > 50 && peakIndex > 120 && now - lastDetectedAt >= detectionCooldown) {
                             lastDetectedAt = now;
                             isDetecting = true;
-                            targetElement.textContent = "音がした";
-
-                            setTimeout(() => {
-
-                                navigator.serviceWorker.ready.then(reg => {
-                                    reg.getNotifications().then(notifications => {
-                                        notifications.forEach(notification => notification.close());
-                                    });
-                                    
-                                    /* ★追加箇所1: 通知と一緒にシステム側で振動させる設定 */
-                                    reg.showNotification("気づかせる君", {
-                                        body: "冷蔵庫を閉めてください！",
-                                        icon: "image/logo.jpg",
-                                        tag: "sound-detected",
-                                        renotify: false,
-                                        vibrate: [500, 200, 500, 200, 500] 
-                                    });
+                            targetElement.textContent = "検知しました！";
+                            
+                            navigator.serviceWorker.ready.then(reg => {
+                                reg.showNotification("音を検知しました", {
+                                    body: "高い音が鳴りました",
+                                    icon: "image/logo.jpg",
+                                    tag: "sound-detected",
+                                    renotify: true,
+                                    vibrate: [500, 200, 500, 200, 500]
                                 });
-
-                                /* ★追加箇所2: Webページを開いている画面そのものを振動させる */
-                                if (navigator.vibrate) {
-                                    navigator.vibrate([500, 200, 500, 200, 500]);
-                                }
-
-                                alert("音を検知しました！");
-
-                                targetElement.textContent = "音を監視中...";
+                            });
+                            
+                            if (navigator.vibrate) {
+                                navigator.vibrate([500, 200, 500, 200, 500]);
+                            }
+                            
+                            setTimeout(() => {
+                                targetElement.textContent = "解析中...";
                                 isDetecting = false;
                                 requestAnimationFrame(checkAudio);
-                            }, 100);
-
+                            }, 3000);
                         } else {
                             requestAnimationFrame(checkAudio);
                         }
                     }
-
                     checkAudio();
-
                 } catch (error) {
-                    alert("マイクの使用が許可されていません。ブラウザの設定を確認してください。");
+                    alert("マイクへのアクセスが拒否されたか、エラーが発生しました。");
                 }
             });
         });
