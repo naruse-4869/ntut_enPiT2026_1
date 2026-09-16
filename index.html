@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>気づかせる君</title>
+    <title>Hello World</title>
 
     <!-- 【CSSの部分】見た目を整えます -->
     <style>
         body {
             /* 画面の中央に配置するための設定 */
             display: flex;
+            flex-direction: column; /* ★追加：要素を縦に綺麗に並べるための設定 */
             justify-content: center;
             align-items: center;
             height: 100vh;
@@ -41,12 +42,34 @@
             padding: 20px 40px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        /* ★追加：マイク起動ボタンのデザイン */
+        #startBtn {
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            background-color: #007aff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
     <!-- 【HTMLの部分】骨組みを作ります -->
+    
+    <div class="logo-container">
+        <img src="image/logo.jpg" alt="気づかせる君 ロゴ" class="logo-image">
+    </div>
+
+    <!-- ★追加：マイクを許可するためのボタン -->
+    <button id="startBtn">マイクをオンにする</button>
+
     <!-- JavaScriptから文字を入れるための空の箱（divタグ）を用意します -->
     <div id="target" class="hello-box"></div>
 
@@ -56,14 +79,76 @@
         document.addEventListener("DOMContentLoaded", function() {
             // idが"target"のHTML要素を取得する
             const targetElement = document.getElementById("target");
+            const startBtn = document.getElementById("startBtn"); // ボタンを取得
             
-            // 取得した要素の中に「Hello World!」というテキストを挿入する
+            // 取得した要素の中に「気づかせる君！」というテキストを挿入する
             targetElement.textContent = "気づかせる君！";
+
+            // ポップアップが連続で出ないようにするためのフラグ（目印）
+            let isDetecting = false; 
+
+            // ボタンを押した時の処理
+            startBtn.addEventListener("click", async function() {
+                try {
+                    // スマホやPCのマイクへのアクセスを要求する
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    // オーディオを解析するための準備
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const analyser = audioContext.createAnalyser();
+                    const microphone = audioContext.createMediaStreamSource(stream);
+                    
+                    // マイクの音を解析器につなぐ
+                    microphone.connect(analyser);
+                    analyser.fftSize = 256;
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                    // 画面の表示を切り替える
+                    targetElement.textContent = "音を監視中...";
+                    startBtn.style.display = "none"; // ボタンを隠す
+
+                    // 音量を監視するループ関数
+                    function checkAudio() {
+                        if (isDetecting) return; // すでに検知中の場合は監視をストップ
+
+                        analyser.getByteFrequencyData(dataArray);
+                        
+                        // 現在の音量の最大値を取得
+                        let maxVolume = 0;
+                        for (let i = 0; i < dataArray.length; i++) {
+                            if (dataArray[i] > maxVolume) {
+                                maxVolume = dataArray[i];
+                            }
+                        }
+
+                        // 音量が一定以上の大きさ（ここでは100）になったら反応する
+                        if (maxVolume > 100) {
+                            isDetecting = true; // フラグを立てる
+                            targetElement.textContent = "音がした";
+                            
+                            // 画面の文字が変わるのを少し待ってからポップアップ（alert）を出す
+                            setTimeout(() => {
+                                alert("音を検知しました！");
+                                
+                                // ポップアップの「OK」を押したら元の状態に戻す
+                                targetElement.textContent = "音を監視中...";
+                                isDetecting = false;
+                                requestAnimationFrame(checkAudio); // 監視を再開
+                            }, 100);
+                        } else {
+                            // 音が小さければ、次の瞬間にもう一度監視する
+                            requestAnimationFrame(checkAudio);
+                        }
+                    }
+
+                    // 監視をスタート
+                    checkAudio();
+
+                } catch (error) {
+                    alert("マイクの使用が許可されていません。ブラウザの設定を確認してください。");
+                }
+            });
         });
     </script>
-    <div class="logo-container">
-        <img src="image/logo.jpg" alt="気づかせる君 ロゴ" class="logo-image">
-    </div>
-
 </body>
 </html>
