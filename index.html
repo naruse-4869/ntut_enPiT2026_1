@@ -113,11 +113,8 @@
                             }
                         }
                         
-                        // 追加: 周波数（Hz）を計算
-                        const frequency = (peakIndex / dataArray.length) * (audioContext.sampleRate / 2);
-
-                        // 音量が一定以上、かつ周波数（例: 2000Hz）を超えた場合にアクションを起こす
-                        if (maxVolume > 100 && frequency > 2000) {
+                        // 変更: 音量は考慮せず、ピークのインデックス（音の高さ）のみで判定
+                        if (peakIndex > 110) {
                             isDetecting = true;
                             targetElement.textContent = "音がした";
 
