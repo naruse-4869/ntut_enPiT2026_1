@@ -71,7 +71,7 @@
 
             let isDetecting = false;
             let lastDetectedAt = 0;
-            const detectionCooldown = 1000;
+            const detectionCooldown = 2000;
 
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
@@ -118,7 +118,7 @@
                         }
                         
                         const now = Date.now();
-                        if (maxVolume > 50 && peakIndex > 120 && now - lastDetectedAt >= detectionCooldown) {
+                        if (peakIndex > 120 && now - lastDetectedAt >= detectionCooldown) {
                             lastDetectedAt = now;
                             isDetecting = true;
                             targetElement.textContent = "音がした";
