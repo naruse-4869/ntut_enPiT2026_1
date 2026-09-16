@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World</title>
+    <title>音の高さ検知アプリ</title>
     <style>
         body {
             display: flex;
@@ -52,8 +52,9 @@
     <div class="logo-container">
         <img src="image/logo.jpg" alt="Logo" class="logo-image">
     </div>
+    
     <button id="startBtn">開始</button>
-    <div id="target" class="hello-box">待機中</div>
+    <div id="target" class="hello-box">待機中...</div>
 
     <script>
         document.addEventListener("DOMContentLoaded", function() {
@@ -62,7 +63,7 @@
 
             let isDetecting = false;
             let lastDetectedAt = 0;
-            const detectionCooldown = 3000;
+            const detectionCooldown = 2000;
 
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
@@ -93,10 +94,14 @@
                     targetElement.textContent = "解析中...";
                     startBtn.style.display = "none";
 
+                    // 2000Hzが配列(dataArray)のどの位置にあたるかを自動計算する
+                    const binWidth = audioContext.sampleRate / analyser.fftSize;
+                    const targetIndex = Math.round(2000 / binWidth);
+
                     function checkAudio() {
                         if (isDetecting) return;
                         analyser.getByteFrequencyData(dataArray);
-
+                        
                         let maxVolume = 0;
                         let peakIndex = 0;
 
@@ -109,31 +114,38 @@
                         
                         const now = Date.now();
                         
-                        // maxVolume > 50 で無音ノイズを弾き、alert を出さないように修正
-                        if (maxVolume > 50 && peakIndex > 120 && now - lastDetectedAt >= detectionCooldown) {
+                        // 音量が一定以上(maxVolume > 50) かつ 2000Hz以上(peakIndex >= targetIndex) か判定
+                        if (maxVolume > 50 && peakIndex >= targetIndex && now - lastDetectedAt >= detectionCooldown) {
                             lastDetectedAt = now;
                             isDetecting = true;
                             targetElement.textContent = "検知しました！";
                             
-                            navigator.serviceWorker.ready.then(reg => {
-                                reg.showNotification("音を検知しました", {
-                                    body: "高い音が鳴りました",
-                                    icon: "image/logo.jpg",
-                                    tag: "sound-detected",
-                                    renotify: true,
-                                    vibrate: [500, 200, 500, 200, 500]
-                                });
-                            });
-                            
-                            if (navigator.vibrate) {
-                                navigator.vibrate([500, 200, 500, 200, 500]);
-                            }
-                            
                             setTimeout(() => {
+                                navigator.serviceWorker.ready.then(reg => {
+                                    reg.getNotifications().then(notifications => {
+                                        notifications.forEach(notification => notification.close());
+                                    });
+                                    
+                                    // プッシュ通知を表示
+                                    reg.showNotification("音を検知しました", {
+                                        body: "2000Hz以上の音が鳴りました。",
+                                        icon: "image/logo.jpg",
+                                        tag: "sound-detected",
+                                        renotify: false,
+                                        vibrate: [500, 200, 500, 200, 500]
+                                    });
+                                });
+                                
+                                if (navigator.vibrate) {
+                                    navigator.vibrate([500, 200, 500, 200, 500]);
+                                }
+                                
+                                // OKボタンを押す必要があった alert は削除しています
+                                
                                 targetElement.textContent = "解析中...";
                                 isDetecting = false;
                                 requestAnimationFrame(checkAudio);
-                            }, 3000);
+                            }, 3000); // 画面の文字が3秒間「検知しました！」になるよう調整
                         } else {
                             requestAnimationFrame(checkAudio);
                         }
