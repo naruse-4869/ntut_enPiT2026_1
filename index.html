@@ -73,7 +73,6 @@
             let lastDetectedAt = 0;
             const detectionCooldown = 1000;
 
-            /* ★新規追加：Service Worker を登録 */
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
                     .then(registration => {
@@ -86,8 +85,6 @@
 
             startBtn.addEventListener("click", async function() {
                 try {
-
-                    /* ★新規追加：通知の許可を求める */
                     const permission = await Notification.requestPermission();
                     if (permission !== "granted") {
                         alert("通知が許可されていません");
@@ -100,7 +97,7 @@
                     const microphone = audioContext.createMediaStreamSource(stream);
 
                     microphone.connect(analyser);
-                    analyser.fftSize = 2048; // FFTサイズを大きくして精度を上げる
+                    analyser.fftSize = 2048; 
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
                     targetElement.textContent = "音を監視中...";
@@ -112,11 +109,11 @@
                         analyser.getByteFrequencyData(dataArray);
 
                         let maxVolume = 0;
-                        let peakIndex = 0; // 追加: 最大音量の位置を記録
+                        let peakIndex = 0; 
                         for (let i = 0; i < dataArray.length; i++) {
                             if (dataArray[i] > maxVolume) {
                                 maxVolume = dataArray[i];
-                                peakIndex = i; // 追加
+                                peakIndex = i; 
                             }
                         }
                         
@@ -128,18 +125,25 @@
 
                             setTimeout(() => {
 
-                                /* ★新規追加：通知バーに通知を送る */
                                 navigator.serviceWorker.ready.then(reg => {
                                     reg.getNotifications().then(notifications => {
                                         notifications.forEach(notification => notification.close());
                                     });
+                                    
+                                    /* ★追加箇所1: 通知と一緒にシステム側で振動させる設定 */
                                     reg.showNotification("気づかせる君", {
                                         body: "冷蔵庫を閉めてください！",
                                         icon: "image/logo.jpg",
                                         tag: "sound-detected",
-                                        renotify: false
+                                        renotify: false,
+                                        vibrate: [500, 200, 500, 200, 500] 
                                     });
                                 });
+
+                                /* ★追加箇所2: Webページを開いている画面そのものを振動させる */
+                                if (navigator.vibrate) {
+                                    navigator.vibrate([500, 200, 500, 200, 500]);
+                                }
 
                                 alert("音を検知しました！");
 
