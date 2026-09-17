@@ -17,7 +17,6 @@
             transition: background-color 0.1s;
         }
 
-        /* ★追加：画面全体を激しくフラッシュさせるクラス */
         body.body-flash {
             animation: screen-flash 0.4s infinite;
         }
@@ -32,26 +31,51 @@
             width: 250px;
             border-radius: 8px;
         }
+        
         .hello-box {
             font-size: 2.5rem;
             font-weight: bold;
-            color: #2c3e50;
             background-color: #ffffff;
             padding: 20px 40px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             text-align: center;
-            transition: all 0.1s;
+            transition: all 0.1s ease;
+            border: 4px solid transparent;
         }
 
-        /* ★追加：警告ボックスと文字をフラッシュさせるクラス */
+        /* ★変更：静かな時のデザイン（文字もグレーにして落ち着かせる） */
+        .hello-box.monitoring-mode {
+            background-color: #fdfdfd;
+            border: 4px solid #e0e0e0;
+            color: #888888;
+        }
+
+        /* ★変更：音を拾った瞬間のデザイン（緑色＋文字を濃くする） */
+        .hello-box.monitoring-mode.sound-active {
+            background-color: #e8f5e9;
+            border: 4px solid #34c759;
+            color: #2c3e50;
+        }
+
+        /* ★変更：マイクスタンプの動きと色の変化 */
+        .mic-icon {
+            display: inline-block;
+            transition: transform 0.1s, filter 0.1s;
+            filter: grayscale(100%) opacity(50%); /* 静かな時は半透明のグレー */
+        }
+        .sound-active .mic-icon {
+            transform: scale(1.3);
+            filter: none; /* 音を拾うとフルカラーになる */
+        }
+
         .hello-box.box-flash {
             animation: text-flash 0.4s infinite;
             border: 6px solid #ff3b30;
             box-shadow: 0 0 30px rgba(255, 59, 48, 0.8);
+            color: #2c3e50;
         }
 
-        /* ★追加：緊急メッセージを強調するクラス */
         .urgent-message {
             display: block;
             font-size: 1.5rem;
@@ -70,7 +94,6 @@
             cursor: pointer;
         }
 
-        /* ★追加：フラッシュ用のアニメーション（赤と白の反転を繰り返す） */
         @keyframes screen-flash {
             0%, 49% { background-color: #ff3b30; }
             50%, 100% { background-color: #ffffff; }
@@ -80,12 +103,12 @@
             0%, 49% {
                 background-color: #ffffff;
                 color: #ff3b30;
-                transform: scale(1.1); /* 少し大きく飛び出す */
+                transform: scale(1.1);
             }
             50%, 100% {
                 background-color: #ff3b30;
                 color: #ffffff;
-                transform: scale(1.0); /* 元のサイズに戻る */
+                transform: scale(1.0);
             }
         }
     </style>
@@ -96,7 +119,11 @@
     </div>
     
     <button id="startBtn">開始</button>
-    <div id="target" class="hello-box">待機中...</div>
+    
+    <div id="target" class="hello-box">
+        <span class="mic-icon">🎤</span><br>
+        <span id="statusText" style="font-size: 2rem;">待機中...</span>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
@@ -107,6 +134,7 @@
             const startBtn = document.getElementById("startBtn");
 
             let isDetecting = false;
+            let isHearing = false; // 現在音を拾っているかどうかの状態
             let lastDetectedAt = 0;
             const detectionCooldown = 2000;
 
@@ -115,22 +143,16 @@
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
                     .then(registration => {
-                        console.log("Service Worker registered");
                         registration.getNotifications().then(notifications => {
                             notifications.forEach(notification => notification.close());
                         });
-                    });
+                    }).catch(e => console.log("SWスキップ", e));
             }
 
             async function createModel() {
                 const checkpointURL = URL + "model.json";
                 const metadataURL = URL + "metadata.json";
-                const recognizer = speechCommands.create(
-                    "BROWSER_FFT", 
-                    undefined, 
-                    checkpointURL, 
-                    metadataURL
-                );
+                const recognizer = speechCommands.create("BROWSER_FFT", undefined, checkpointURL, metadataURL);
                 await recognizer.ensureModelLoaded();
                 return recognizer;
             }
@@ -138,22 +160,59 @@
             startBtn.addEventListener("click", async function() {
                 try {
                     const permission = await Notification.requestPermission();
-                    if (permission !== "granted") {
-                        console.log("通知が許可されていません。");
-                    }
                 } catch (e) {
                     console.log("通知APIスキップ:", e);
                 }
 
                 try {
-                    targetElement.textContent = "AIを準備中...";
+                    targetElement.innerHTML = `<span class="mic-icon">🎤</span><br><span style="font-size: 2rem;">AIを準備中...</span>`;
                     startBtn.style.display = "none";
 
                     const recognizer = await createModel();
                     const classLabels = recognizer.wordLabels();
 
-                    targetElement.textContent = "音を監視中...";
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const analyser = audioCtx.createAnalyser();
+                    const source = audioCtx.createMediaStreamSource(stream);
+                    source.connect(analyser);
+                    analyser.fftSize = 256;
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
+                    // 準備完了で初期状態（静か）をセット
+                    targetElement.classList.add("monitoring-mode");
+                    targetElement.innerHTML = `<span class="mic-icon" id="micIcon">🎤</span><br><span id="statusText" style="font-size: 2rem;">静かな状態です</span>`;
+
+                    // 音の有無に合わせて文字と枠を切り替えるループ
+                    function checkVolume() {
+                        requestAnimationFrame(checkVolume);
+                        if (isDetecting) return; 
+
+                        analyser.getByteFrequencyData(dataArray);
+                        let sum = 0;
+                        for(let i = 0; i < dataArray.length; i++) {
+                            sum += dataArray[i];
+                        }
+                        let average = sum / dataArray.length;
+
+                        // ★変更：テキストの内容も一緒に切り替える
+                        if (average > 5) {
+                            if (!isHearing) { // 状態が変わった瞬間だけ更新（処理落ち防止）
+                                targetElement.classList.add("sound-active");
+                                document.getElementById("statusText").textContent = "音を感知中！";
+                                isHearing = true;
+                            }
+                        } else {
+                            if (isHearing) {
+                                targetElement.classList.remove("sound-active");
+                                document.getElementById("statusText").textContent = "静かな状態です";
+                                isHearing = false;
+                            }
+                        }
+                    }
+                    checkVolume(); 
+
+                    // AIによる冷蔵庫の音の判定
                     recognizer.listen(result => {
                         if (isDetecting) return;
 
@@ -172,14 +231,14 @@
                             if (now - lastDetectedAt >= detectionCooldown) {
                                 lastDetectedAt = now;
                                 isDetecting = true;
+                                isHearing = false;
                                 
-                                const detectedName = classLabels[maxScoreIndex];
+                                targetElement.classList.remove("monitoring-mode");
+                                targetElement.classList.remove("sound-active");
                                 
-                                // 【修正部分①】クラスを追加してフラッシュアニメーションを発動
                                 document.body.classList.add("body-flash");
                                 targetElement.classList.add("box-flash");
                                 
-                                // 【修正部分②】フラッシュ効果の中で表示するテキスト
                                 targetElement.innerHTML = `⚠️ 検知中 ⚠️<br><span class="urgent-message">冷蔵庫を閉めて！<br>電力が無駄になっています</span>`;
                                 
                                 if ("serviceWorker" in navigator && Notification.permission === "granted") {
@@ -201,12 +260,14 @@
                                     navigator.vibrate([500, 200, 500, 200, 500]);
                                 }
                                 
-                                // 3秒後にフラッシュを止めて元の状態に戻す
                                 setTimeout(() => {
-                                    // 【修正部分③】フラッシュアニメーションのクラスを削除
                                     document.body.classList.remove("body-flash");
                                     targetElement.classList.remove("box-flash");
-                                    targetElement.textContent = "音を監視中...";
+                                    
+                                    // 3秒経ったら再び初期状態（静か）に戻す
+                                    targetElement.classList.add("monitoring-mode");
+                                    targetElement.innerHTML = `<span class="mic-icon" id="micIcon">🎤</span><br><span id="statusText" style="font-size: 2rem;">静かな状態です</span>`;
+                                    
                                     isDetecting = false;
                                 }, 3000);
                             }
@@ -220,9 +281,11 @@
 
                 } catch (error) {
                     console.error(error);
-                    alert("マイクへのアクセスが拒否されたか、エラーが発生しました。");
+                    targetElement.classList.remove("monitoring-mode");
+                    targetElement.classList.remove("sound-active");
+                    targetElement.innerHTML = `<span class="mic-icon" style="filter: grayscale(100%);">🎤</span><br><span style="font-size: 1.5rem;">エラーが発生しました</span>`;
                     startBtn.style.display = "block";
-                    targetElement.textContent = "エラーが発生しました";
+                    alert("マイクへのアクセスが拒否されたか、エラーが発生しました。");
                 }
             });
         });
