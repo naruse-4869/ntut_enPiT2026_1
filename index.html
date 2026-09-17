@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>音の高さ検知アプリ</title>
+    <title>気づかせる君 - AI判定版</title>
     <style>
         body {
             display: flex;
@@ -56,6 +56,10 @@
     <button id="startBtn">開始</button>
     <div id="target" class="hello-box">待機中...</div>
 
+    <!-- ★追加部分①：AIを動かすためのGoogle公式ライブラリを読み込む -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             const targetElement = document.getElementById("target");
@@ -65,6 +69,10 @@
             let lastDetectedAt = 0;
             const detectionCooldown = 2000;
 
+            // ★あなたが作成したTeachable MachineのURL
+            const URL = "https://teachablemachine.withgoogle.com/models/VKPO9VJZR/";
+
+            // Service Workerの登録（既存のまま）
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
                     .then(registration => {
@@ -75,60 +83,75 @@
                     });
             }
 
+            // ★追加部分②：AIモデルを読み込む関数
+            async function createModel() {
+                const checkpointURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
+                const recognizer = speechCommands.create(
+                    "BROWSER_FFT", 
+                    undefined, 
+                    checkpointURL, 
+                    metadataURL
+                );
+                await recognizer.ensureModelLoaded();
+                return recognizer;
+            }
+
             startBtn.addEventListener("click", async function() {
                 try {
+                    // 通知の許可をリクエスト（既存のまま）
                     const permission = await Notification.requestPermission();
                     if (permission !== "granted") {
                         alert("通知が許可されていません。");
                         return;
                     }
 
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const analyser = audioContext.createAnalyser();
-                    const microphone = audioContext.createMediaStreamSource(stream);
-                    microphone.connect(analyser);
-                    analyser.fftSize = 2048;
-
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                    targetElement.textContent = "解析中...";
+                    targetElement.textContent = "AIを準備中...";
                     startBtn.style.display = "none";
 
-                    // 2000Hzが配列(dataArray)のどの位置にあたるかを自動計算する
-                    const binWidth = audioContext.sampleRate / analyser.fftSize;
-                    const targetIndex = Math.round(2000 / binWidth);
+                    // ★追加部分③：AIモデルを起動
+                    const recognizer = await createModel();
+                    const classLabels = recognizer.wordLabels(); // 学習したクラス名（背景音、冷蔵庫の音など）を取得
 
-                    function checkAudio() {
-                        if (isDetecting) return;
-                        analyser.getByteFrequencyData(dataArray);
-                        
-                        let maxVolume = 0;
-                        let peakIndex = 0;
+                    targetElement.textContent = "音を監視中...";
 
-                        for (let i = 0; i < dataArray.length; i++) {
-                            if (dataArray[i] > maxVolume) {
-                                maxVolume = dataArray[i];
-                                peakIndex = i; 
+                    // ★追加部分④：AIが音を常に聞き取り、判定する処理
+                    recognizer.listen(result => {
+                        if (isDetecting) return; // すでに検知処理中なら無視（連続で鳴るのを防ぐ）
+
+                        const scores = result.scores; // 各クラスの確率（0.0〜1.0）が入っている配列
+
+                        // 最も確率の高い音（スコア）を探す
+                        let maxScore = 0;
+                        let maxScoreIndex = 0;
+                        for (let i = 0; i < classLabels.length; i++) {
+                            if (scores[i] > maxScore) {
+                                maxScore = scores[i];
+                                maxScoreIndex = i;
                             }
                         }
-                        
-                        const now = Date.now();
-                        
-                        // 音量が一定以上(maxVolume > 50) かつ 2000Hz以上(peakIndex >= targetIndex) か判定
-                        if (maxVolume > 50 && peakIndex >= targetIndex && now - lastDetectedAt >= detectionCooldown) {
-                            lastDetectedAt = now;
-                            isDetecting = true;
-                            targetElement.textContent = "検知しました！";
+
+                        // 判定ロジック：
+                        // 1. 確率が80%以上 (maxScore > 0.80) であること
+                        // 2. その音が0番目（通常は「背景音」）ではないこと
+                        if (maxScore > 0.80 && maxScoreIndex !== 0) {
                             
-                            setTimeout(() => {
+                            const now = Date.now();
+                            if (now - lastDetectedAt >= detectionCooldown) {
+                                lastDetectedAt = now;
+                                isDetecting = true;
+                                
+                                // 検知したクラス名（Teachable Machineで入力した名前）を画面に表示
+                                const detectedName = classLabels[maxScoreIndex];
+                                targetElement.textContent = `${detectedName} を検知！`;
+                                
+                                // プッシュ通知と振動の実行
                                 navigator.serviceWorker.ready.then(reg => {
                                     reg.getNotifications().then(notifications => {
                                         notifications.forEach(notification => notification.close());
                                     });
-                                    
-                                    // プッシュ通知を表示
-                                    reg.showNotification("音を検知しました", {
-                                        body: "2000Hz以上の音が鳴りました。",
+                                    reg.showNotification("気づかせる君", {
+                                        body: `${detectedName} が鳴っています！冷蔵庫を確認してください。`,
                                         icon: "image/logo.jpg",
                                         tag: "sound-detected",
                                         renotify: false,
@@ -136,23 +159,30 @@
                                     });
                                 });
                                 
+                                // 画面を開いているスマホ本体も振動させる
                                 if (navigator.vibrate) {
                                     navigator.vibrate([500, 200, 500, 200, 500]);
                                 }
                                 
-                                // OKボタンを押す必要があった alert は削除しています
-                                
-                                targetElement.textContent = "解析中...";
-                                isDetecting = false;
-                                requestAnimationFrame(checkAudio);
-                            }, 3000); // 画面の文字が3秒間「検知しました！」になるよう調整
-                        } else {
-                            requestAnimationFrame(checkAudio);
+                                // 3秒後に「音を監視中...」の待機画面に戻す
+                                setTimeout(() => {
+                                    targetElement.textContent = "音を監視中...";
+                                    isDetecting = false;
+                                }, 3000);
+                            }
                         }
-                    }
-                    checkAudio();
+                    }, {
+                        includeSpectrogram: true, // AIの判定に必要
+                        probabilityThreshold: 0.80, // 80%以上の自信がある時だけ反応
+                        invokeCallbackOnNoiseAndUnknown: true,
+                        overlapFactor: 0.50 
+                    });
+
                 } catch (error) {
+                    console.error(error);
                     alert("マイクへのアクセスが拒否されたか、エラーが発生しました。");
+                    startBtn.style.display = "block";
+                    targetElement.textContent = "エラーが発生しました";
                 }
             });
         });
