@@ -14,7 +14,14 @@
             margin: 0;
             background-color: #f0f4f8;
             font-family: 'Helvetica Neue', Arial, sans-serif;
+            transition: background-color 0.1s;
         }
+
+        /* ★追加：画面全体を激しくフラッシュさせるクラス */
+        body.body-flash {
+            animation: screen-flash 0.4s infinite;
+        }
+
         .logo-container {
             text-align: center;
             margin-bottom: 15px;
@@ -26,7 +33,7 @@
             border-radius: 8px;
         }
         .hello-box {
-            font-size: 3rem;
+            font-size: 2.5rem;
             font-weight: bold;
             color: #2c3e50;
             background-color: #ffffff;
@@ -34,7 +41,23 @@
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             text-align: center;
+            transition: all 0.1s;
         }
+
+        /* ★追加：警告ボックスと文字をフラッシュさせるクラス */
+        .hello-box.box-flash {
+            animation: text-flash 0.4s infinite;
+            border: 6px solid #ff3b30;
+            box-shadow: 0 0 30px rgba(255, 59, 48, 0.8);
+        }
+
+        /* ★追加：緊急メッセージを強調するクラス */
+        .urgent-message {
+            display: block;
+            font-size: 1.5rem;
+            margin-top: 10px;
+        }
+
         #startBtn {
             font-size: 1.2rem;
             font-weight: bold;
@@ -46,6 +69,25 @@
             border-radius: 8px;
             cursor: pointer;
         }
+
+        /* ★追加：フラッシュ用のアニメーション（赤と白の反転を繰り返す） */
+        @keyframes screen-flash {
+            0%, 49% { background-color: #ff3b30; }
+            50%, 100% { background-color: #ffffff; }
+        }
+
+        @keyframes text-flash {
+            0%, 49% {
+                background-color: #ffffff;
+                color: #ff3b30;
+                transform: scale(1.1); /* 少し大きく飛び出す */
+            }
+            50%, 100% {
+                background-color: #ff3b30;
+                color: #ffffff;
+                transform: scale(1.0); /* 元のサイズに戻る */
+            }
+        }
     </style>
 </head>
 <body>
@@ -56,7 +98,6 @@
     <button id="startBtn">開始</button>
     <div id="target" class="hello-box">待機中...</div>
 
-    <!-- ★追加部分①：AIを動かすためのGoogle公式ライブラリを読み込む -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
 
@@ -69,10 +110,8 @@
             let lastDetectedAt = 0;
             const detectionCooldown = 2000;
 
-            // ★あなたが作成したTeachable MachineのURL
             const URL = "https://teachablemachine.withgoogle.com/models/VKPO9VJZR/";
 
-            // Service Workerの登録（既存のまま）
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.register("service-worker.js")
                     .then(registration => {
@@ -83,7 +122,6 @@
                     });
             }
 
-            // ★追加部分②：AIモデルを読み込む関数
             async function createModel() {
                 const checkpointURL = URL + "model.json";
                 const metadataURL = URL + "metadata.json";
@@ -99,29 +137,27 @@
 
             startBtn.addEventListener("click", async function() {
                 try {
-                    // 通知の許可をリクエスト（既存のまま）
                     const permission = await Notification.requestPermission();
                     if (permission !== "granted") {
-                        alert("通知が許可されていません。");
-                        return;
+                        console.log("通知が許可されていません。");
                     }
+                } catch (e) {
+                    console.log("通知APIスキップ:", e);
+                }
 
+                try {
                     targetElement.textContent = "AIを準備中...";
                     startBtn.style.display = "none";
 
-                    // ★追加部分③：AIモデルを起動
                     const recognizer = await createModel();
-                    const classLabels = recognizer.wordLabels(); // 学習したクラス名（背景音、冷蔵庫の音など）を取得
+                    const classLabels = recognizer.wordLabels();
 
                     targetElement.textContent = "音を監視中...";
 
-                    // ★追加部分④：AIが音を常に聞き取り、判定する処理
                     recognizer.listen(result => {
-                        if (isDetecting) return; // すでに検知処理中なら無視（連続で鳴るのを防ぐ）
+                        if (isDetecting) return;
 
-                        const scores = result.scores; // 各クラスの確率（0.0〜1.0）が入っている配列
-
-                        // 最も確率の高い音（スコア）を探す
+                        const scores = result.scores;
                         let maxScore = 0;
                         let maxScoreIndex = 0;
                         for (let i = 0; i < classLabels.length; i++) {
@@ -131,49 +167,53 @@
                             }
                         }
 
-                        // 判定ロジック：
-                        // 1. 確率が80%以上 (maxScore > 0.80) であること
-                        // 2. その音が0番目（通常は「背景音」）ではないこと
                         if (maxScore > 0.80 && maxScoreIndex !== 0) {
-                            
                             const now = Date.now();
                             if (now - lastDetectedAt >= detectionCooldown) {
                                 lastDetectedAt = now;
                                 isDetecting = true;
                                 
-                                // 検知したクラス名（Teachable Machineで入力した名前）を画面に表示
                                 const detectedName = classLabels[maxScoreIndex];
-                                targetElement.textContent = `${detectedName} を検知！`;
                                 
-                                // プッシュ通知と振動の実行
-                                navigator.serviceWorker.ready.then(reg => {
-                                    reg.getNotifications().then(notifications => {
-                                        notifications.forEach(notification => notification.close());
-                                    });
-                                    reg.showNotification("気づかせる君", {
-                                        body: `${detectedName} が鳴っています！冷蔵庫を確認してください。`,
-                                        icon: "image/logo.jpg",
-                                        tag: "sound-detected",
-                                        renotify: false,
-                                        vibrate: [500, 200, 500, 200, 500]
-                                    });
-                                });
+                                // 【修正部分①】クラスを追加してフラッシュアニメーションを発動
+                                document.body.classList.add("body-flash");
+                                targetElement.classList.add("box-flash");
                                 
-                                // 画面を開いているスマホ本体も振動させる
+                                // 【修正部分②】フラッシュ効果の中で表示するテキスト
+                                targetElement.innerHTML = `⚠️ 検知中 ⚠️<br><span class="urgent-message">冷蔵庫を閉めて！<br>電力が無駄になっています</span>`;
+                                
+                                if ("serviceWorker" in navigator && Notification.permission === "granted") {
+                                    navigator.serviceWorker.ready.then(reg => {
+                                        reg.getNotifications().then(notifications => {
+                                            notifications.forEach(notification => notification.close());
+                                        });
+                                        reg.showNotification("気づかせる君", {
+                                            body: `冷蔵庫が開いています！電力が無駄になっています！`,
+                                            icon: "image/logo.jpg",
+                                            tag: "sound-detected",
+                                            renotify: false,
+                                            vibrate: [500, 200, 500, 200, 500]
+                                        });
+                                    });
+                                }
+                                
                                 if (navigator.vibrate) {
                                     navigator.vibrate([500, 200, 500, 200, 500]);
                                 }
                                 
-                                // 3秒後に「音を監視中...」の待機画面に戻す
+                                // 3秒後にフラッシュを止めて元の状態に戻す
                                 setTimeout(() => {
+                                    // 【修正部分③】フラッシュアニメーションのクラスを削除
+                                    document.body.classList.remove("body-flash");
+                                    targetElement.classList.remove("box-flash");
                                     targetElement.textContent = "音を監視中...";
                                     isDetecting = false;
                                 }, 3000);
                             }
                         }
                     }, {
-                        includeSpectrogram: true, // AIの判定に必要
-                        probabilityThreshold: 0.80, // 80%以上の自信がある時だけ反応
+                        includeSpectrogram: true,
+                        probabilityThreshold: 0.80,
                         invokeCallbackOnNoiseAndUnknown: true,
                         overlapFactor: 0.50 
                     });
